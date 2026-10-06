@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 Images and checkpoints are **not** stored in git because they are too large. Download them here:
 
-**Google Drive:** <ADD_SHARED_DRIVE_LINK_HERE>
+**Google Drive:** https://drive.google.com/drive/folders/1ft7XsTZN0EtjHrBf-4OX56wlKJv9-i3v
 
 Unzip the files into `data/raw/` so that you have `data/raw/<image files>` plus the metadata CSV.
 
