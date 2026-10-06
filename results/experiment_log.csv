@@ -1,0 +1,1 @@
+run_id,date,author,model,epochs,batch_size,lr,val_accuracy,val_f1,notes
