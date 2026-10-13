@@ -25,3 +25,12 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Generated source bundles, staging, temporary files and training output
+dist/
+.tmp/
+temporary_test_data/
+worldknower_smoke_*/
+colab_staging/
+*.pth.tmp
+results/training_history*.csv
