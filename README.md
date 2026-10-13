@@ -12,10 +12,9 @@ data/
   processed/    # resized / cleaned images (not in git)
   splits/       # train/val/test CSVs (not in git)
 notebooks/
-  train_resnet18_colab.ipynb  # hosted GPU execution interface
+  WorldKnowr.ipynb    # shared team notebook; must be added to this checkout
 scripts/
   smoke_test.py       # temporary synthetic CPU integration test
-  package_colab.py    # bundle current source for upload
 src/
   dataset.py    # PyTorch Dataset + transforms
   model.py      # ResNet18 factory and checkpoint reconstruction
@@ -44,7 +43,7 @@ python scripts/smoke_test.py
 
 The smoke test explicitly uses CPU, disables pretrained weights, limits CPU threads, and runs one epoch on nine tiny random RGB images (six train, three validation). It also checks non-RGB conversion, label reuse, errors, worker spawning, selected-data staging, backpropagation, history, and checkpoint reload. All images/results are created in a separate temporary directory and removed afterward. Accuracy on random images has no scientific meaning. It never touches project checkpoints or the existing experiment log.
 
-`requirements.txt` includes the team's other dependencies; install it if you need their data/evaluation tools. On Colab, keep the existing CUDA-compatible torch/torchvision pair; the notebook installs only missing supporting packages. Do not install the local CPU wheel command on the hosted runtime.
+`requirements.txt` includes the team's other dependencies; install it if you need their data/evaluation tools. On Colab, keep the existing CUDA-compatible torch/torchvision pair and install only missing supporting packages (`pandas`, `numpy`, `Pillow`). Verify that torch/torchvision import successfully and that PyTorch has the modern `torch.amp` APIs (PyTorch >= 2.4). Do not install the local CPU wheel command on the hosted runtime.
 
 ## Data and relative paths
 
@@ -66,25 +65,40 @@ Country indices come from sorted unique training country names. Validation/test 
 
 ## Google Colab through VS Code
 
-1. Open `notebooks/train_resnet18_colab.ipynb`. Use **Select Kernel → Colab**, then choose your existing **WorldKnowr GPU T4** server (or another hosted GPU server). Run section 1: it must report CUDA and the cloud GPU's name. A local kernel or CPU runtime is rejected.
-2. In your **local terminal**, run `python scripts/package_colab.py`. Right-click `dist/worldknower_source.zip` in VS Code Explorer → **Upload to Colab**, choosing the intended server if prompted. Use the Colab Contents view to find its uploaded path. Section 2 defaults to `/content/worldknower_source.zip`; adjust `SOURCE_ZIP` if needed. Extraction puts the Python project in `/content/WorldKnower`. Direct source-folder uploads are also supported by setting `SOURCE_ZIP = None` and the correct `PROJECT_SOURCE`.
-3. Run section 3 to verify dependencies without replacing Colab's torch/torchvision stack.
-4. Run section 4 to mount Drive and authenticate. If mounting fails in the notebook, use **Colab: Mount Google Drive to Server...**, then confirm `/content/drive/MyDrive` exists. Set the dataset root and CSV paths to your team's uploaded data. Set output paths on mounted Drive; the default creates a separate timestamped run directory.
-5. Run sections 5–6 to validate files and set hyperparameters. Optionally enable `STAGE_IMAGES` to copy only referenced train/validation images to `/content/worldknower_staged` for faster reads.
-6. Run section 7. It launches the uploaded `src/train.py` with **`--device cuda`** in a fresh subprocess. It uses the selected cloud GPU, AMP, pinned memory and nonblocking transfers. No model or training loop is duplicated in the notebook.
-7. Run sections 8–9 to display history and verify checkpoint/history/manifest on Drive. Check those files in Drive before disconnecting. The uploaded source, staged data and weight-download cache in `/content` are temporary and may disappear; Drive outputs persist.
+**Setup pending:** the shared `WorldKnowr.ipynb` is not present in this checkout. Add the original file at `notebooks/WorldKnowr.ipynb` before its setup/cache cells can be reviewed and the **Train ResNet18 Baseline** section integrated. The workflow below describes the intended integration; it does not claim the notebook has been modified or remotely verified.
 
-**Synchronize after every Codex/local edit:** save the Python files → rerun `python scripts/package_colab.py` locally → upload/replace the ZIP on the same server → rerun notebook section 2 and sections 3–9. Uploads are explicit; editing local files does not update remote copies. Section 2 prints source hashes and training records them in `run_manifest.json`. The fresh training subprocess avoids stale Python imports. Rerun section 4 for a new output run directory; rerunning section 7 alone overwrites that run's checkpoint/history.
+1. Develop and run the CPU smoke test locally in VS Code. Keep the model, Dataset and training loop in `src/*.py`.
+2. Review, commit and push your changes to [the team's GitHub repository](https://github.com/TechBroMoho/WorldKnower.git) on the intended team-approved branch. Local edits are not available to the remote runtime until pushed. Codex does not commit or push automatically.
+3. Open `notebooks/WorldKnowr.ipynb` in VS Code. Choose **Select Kernel → Colab → WorldKnowr GPU T4** (or another hosted GPU server).
+4. Run the shared environment setup: inspect `nvidia-smi`, verify `torch.cuda.is_available()` and print `torch.cuda.get_device_name(0)`. A GPU shown by `nvidia-smi` alone does not prove PyTorch can use it. Full training must refuse to run if CUDA is unavailable.
+5. Mount Drive at `/content/drive` and complete authentication. If necessary use **Colab: Mount Google Drive to Server...**. Confirm the team's `WorldKnowerDrive` folder is accessible.
+6. Clone the repository to `/content/WorldKnower` if absent. If present, check the branch and `git status --porcelain`; update a clean checkout with `git pull --ff-only`. Stop and resolve remote uncommitted changes or divergent branches manually. Never force-reset or discard edits. Use `%cd /content/WorldKnower` so `python -m src.train` runs from the actual repository root, independently of the notebook's location.
+7. Use the shared dataset preparation from `/content/drive/MyDrive/WorldKnowerDrive/Data`, preserving its dataset ZIP cache. Verify extraction under `/content/data`, the expected images, and `country_to_path.csv`. Cache freshness/completeness and metadata copying on every loading branch need inspection once the notebook is supplied.
+8. Configure the split and output paths below, validate the `path,country` split schema and resolved image files, then execute `src/train.py` with `--device cuda`. Do not generate real-data splits in this notebook.
+9. Confirm `best_resnet18.pth`, `training_history.csv` and `experiment_log.csv` exist in the unique run directory on mounted Drive before disconnecting.
 
-**Website fallback:** upload this notebook at [Google Colab](https://colab.research.google.com/), select a GPU through Runtime settings, upload the same source ZIP with the Files sidebar (or `google.colab.files.upload()` on the website), and run the same sections. The ZIP includes only Python source, this notebook, README and requirements, excluding images, environments, weights, and `src/model.ipynb`.
+**After each source change:** save → test locally → commit/push the intended branch → rerun the notebook's safe Git update → launch a fresh training process. Check the remote commit and branch match the version you intend to train. For private repository access, authenticate through the team's approved method; do not embed credentials in the notebook.
 
-The extension's [official user guide](https://github.com/googlecolab/colab-vscode/wiki/User-Guide) documents kernel selection, explicit uploads and Drive mounting. Its [known issues](https://github.com/googlecolab/colab-vscode/wiki/Known-Issues-and-Workarounds) explain why website-specific file upload APIs may not work in VS Code. Upload/Drive authentication and hosted GPU execution require manual execution in your extension; local smoke testing does not verify them. Colab GPU allocation depends on availability; this code does not request a particular GPU model.
+Normal VS Code terminals run on your **local machine**. Cells connected to a hosted Colab kernel and an explicitly opened remote Colab terminal run on **Google's servers**. The directory name alone does not determine where execution happens. `/content` and its extracted dataset are temporary; mounted Drive outputs persist. Colab GPU allocation is not guaranteed and the code cannot force availability of a T4, L4, A100 or another GPU. See the extension's [official guide](https://github.com/googlecolab/colab-vscode/wiki/User-Guide) for hosted kernel selection and Drive mounting. Hosted execution and Drive access remain unverified locally.
 
 ## Switching to real data
 
-Change only the notebook configuration: `DATASET_ROOT`, `TRAIN_CSV`, `VAL_CSV`, `CHECKPOINT_DIR`, and `HISTORY_PATH` (plus `PROJECT_SOURCE`/`SOURCE_ZIP` for the upload location). Default CSVs are under `MyDrive/WorldKnower/data/splits/`; the example dataset root is `MyDrive/WorldKnower/data/processed/`. Adjust the root to your actual CSV path convention. Outputs default to a run directory under `MyDrive/WorldKnower/results/`.
+The shared notebook has not been supplied, and the actual Drive dataset and split CSVs have not been accessed. These are proposed configurable paths, not verified dataset locations:
 
-Keep `test.csv` for James's evaluation. Training and staging never read it. The number of countries is inferred from training, so no source changes are needed for a new country set. Set epochs, batch size, learning rate and augmentation in section 6. Reduce batch size for CUDA out-of-memory errors. Worker count is 0 by default in the CLI for Windows compatibility, and 2 in the Colab notebook.
+| Setting | Intended location |
+| --- | --- |
+| `DATASET_ROOT` | `/content/data/compressed_dataset` if split paths are relative to that folder |
+| `TRAIN_CSV` | Teammate-provided `train.csv`; configure its actual Drive or extracted location |
+| `VAL_CSV` | Teammate-provided `val.csv`; configure its actual Drive or extracted location |
+| `CHECKPOINT_DIR` | `/content/drive/MyDrive/WorldKnowerDrive/results/<unique-run-id>/checkpoints` |
+| `HISTORY_PATH` | `/content/drive/MyDrive/WorldKnowerDrive/results/<unique-run-id>/training_history.csv` |
+| Experiment log | `/content/drive/MyDrive/WorldKnowerDrive/results/<unique-run-id>/experiment_log.csv` |
+
+Choose a fresh timestamp/UUID run ID every time you launch training, and refuse an already-existing run directory. This isolates your outputs from earlier experiments and other teammates. The checkpoint file is `CHECKPOINT_DIR/best_resnet18.pth`.
+
+Inspect `country_to_path.csv` separately; its name does not establish its schema, and it must not be substituted for `train.csv`/`val.csv` without verification. Kartik and Sri provide the real splits. Before training, use `CountryDataset(TRAIN_CSV, DATASET_ROOT)` and construct validation with its `country_to_idx`; verify resolved image paths remain inside the selected extracted dataset. For `France/image001.jpg`, a root of `/content/data/compressed_dataset` resolves the image there. For `compressed_dataset/France/image001.jpg`, the root should instead be `/content/data`. No split generation or source rewrite is needed when compatible CSVs arrive.
+
+Keep `test.csv` for James's evaluation. Training never reads it. Country count is inferred from training. The intended single hyperparameter cell uses 10 epochs, batch size 32, learning rate 0.0001, seed 42, pretrained weights/augmentation/AMP enabled, and CUDA. Adam and CrossEntropyLoss remain defined in `src/train.py`. Reduce batch size for CUDA out-of-memory errors. Worker count is 0 by default in the CLI for Windows compatibility; 2 is a reasonable initial Colab setting.
 
 ## Training CLI and artifacts
 
@@ -99,9 +113,9 @@ python -m src.train --help
 
 Best validation accuracy saves `results/checkpoints/best_resnet18.pth`; history goes to `results/training_history.csv`, with `epoch,train_loss,val_accuracy`. Loss is sample-weighted and accuracy is a **fraction from 0 to 1**. The first epoch is saved even if accuracy is zero; ties retain the earlier best. These output paths are configurable and each run overwrites its own history/best file. Use distinct output directories for separate experiments.
 
-`--experiment-log results/experiment_log.csv` appends a completed run using the existing schema without overwriting records. The Colab notebook enables this on Drive. `val_f1` is blank because James owns F1 evaluation. `--author` and `--notes` can be supplied. The project's existing log remains unchanged until you opt into logging a real run.
+`--experiment-log results/experiment_log.csv` appends a completed run using the existing schema without overwriting records. For hosted training pass the unique run's Drive log path instead. `val_f1` is blank because James owns F1 evaluation. `--author` and `--notes` can be supplied. The project's existing log remains unchanged until you opt into logging a real run.
 
-Seeds cover Python, NumPy, PyTorch, CUDA and loader workers. CUDA defaults to cuDNN benchmarking for fixed-size input performance; `--deterministic` disables benchmarking and requests deterministic algorithms. For strict CUDA runs, set `CUBLAS_WORKSPACE_CONFIG=:4096:8` before launching Python (the notebook does this automatically). Reproducibility is not guaranteed across hardware/library versions. Checkpoints include optimizer/scaler state and settings, but this baseline does not implement a resume command or save a complete random-generator snapshot.
+Seeds cover Python, NumPy, PyTorch, CUDA and loader workers. CUDA defaults to cuDNN benchmarking for fixed-size input performance; `--deterministic` disables benchmarking and requests deterministic algorithms. For strict CUDA runs, set `CUBLAS_WORKSPACE_CONFIG=:4096:8` before launching Python. Reproducibility is not guaranteed across hardware/library versions. Checkpoints include optimizer/scaler state and settings, but this baseline does not implement a resume command or save a complete random-generator snapshot.
 
 ## Evaluation compatibility
 
