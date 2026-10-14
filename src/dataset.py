@@ -2,8 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from pathlib import Path
 
+from pathlib import Path
 import pandas as pd
 from PIL import Image
 import torch
@@ -62,12 +62,12 @@ country_to_image_test_df = X_test.copy()
 country_to_image_test_df['country'] = y_test
 country_to_image_test_df.to_csv('data/splits/world_knower_test.csv', index=False)
 
+
 """CSV image datasets, ImageNet transforms, and ordinary PyTorch DataLoaders."""
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 IMAGE_SIZE = 224
-
 
 def build_transforms(training=False, augmentation=True):
     """Only training may use random augmentation; geographic directions stay intact."""
