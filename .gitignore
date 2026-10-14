@@ -25,3 +25,9 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Temporary files and training output
+.tmp/
+temporary_test_data/
+worldknower_smoke_*/
+results/training_history*.csv
