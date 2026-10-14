@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 dataset_path = "data/raw/compressed_dataset"
 
@@ -33,5 +34,21 @@ for country in sorted(os.listdir(dataset_path)):
         country_to_image_data['image_path'].append(image_path)
 
 country_to_image_df = pd.DataFrame(country_to_image_data)
-country_to_image_df.to_csv('data/country_to_path.csv', index=False)
+country_to_image_df.to_csv('data/raw/country_to_path.csv', index=False)
 
+X = country_to_image_df[['image_path']]
+y = country_to_image_df['country']
+X_train_temp, X_test, y_train_temp, y_test = train_test_split(X, y, test_size = 0.15, random_state = 27, stratify = y)
+X_train, X_val, y_train, y_val = train_test_split(X_train_temp, y_train_temp, test_size = 0.18, random_state = 27, stratify = y_train_temp)
+
+country_to_image_train_df = X_train.copy()
+country_to_image_train_df['country'] = y_train
+country_to_image_train_df.to_csv('data/splits/world_knower_train.csv', index=False)
+
+country_to_image_val_df = X_val.copy()
+country_to_image_val_df['country'] = y_val
+country_to_image_val_df.to_csv('data/splits/world_knower_val.csv', index=False)
+
+country_to_image_test_df = X_test.copy()
+country_to_image_test_df['country'] = y_test
+country_to_image_test_df.to_csv('data/splits/world_knower_test.csv', index=False)
