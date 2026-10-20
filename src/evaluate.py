@@ -1,6 +1,11 @@
 from pathlib import Path # credit folders and specify file locations
+from model import build_model
+from dataset import CountryDataset, create_loader, build_transforms 
+import argparse 
 import matplotlib.pyplot as plt # create graphs
 import torch #used to run the trained AI model
+from torchvision.models import ResNet18_Weights, resnet18
+import pandas as pd
 
 from sklearn.metrics import (accuracy_score,  # percentage of correct guesses
                              f1_score,        # Measures prediction quality using precision and recall
@@ -16,15 +21,28 @@ def collect_predictions(model, val_loader): # function that takes a trained mode
 
     model.eval() # switching the model to evaluation mode
 
-    with torch.no_grade(): #disabeling the graident calculations because we aren't training
+    with torch.no_grad(): #disabeling the graident calculations because we aren't training
         for images, labels in val_loader: # go through validation images one batch at a time
             outputs = model(images) # feed the images into the model to obtain country scores
-            predictions = outputs.argmax(dim=1) #selecting the ountry with the highest score for each image
+            predictions = outputs.argmax(dim=1) #selecting the country with the highest score for each image
 
             y_true.extend(labels.cpu().tolist()) #convert the correct labels to a python list
             y_pred.extend(predictions.cpu().tolist()) #convert the predictions to a python list
     return y_true, y_pred
 
+def load_validation_data(args, country_to_idx):
+    val_dataset = CountryDataset(csv_path = args.split_csv, root_dir=args.dataset_root, country_to_idx=country_to_idx, transform=build_transforms())
+    val_loader = create_loader(val_dataset, batch_size=32, training=False, device="cpu")
+    return val_loader
+
+def load_trained_model(checkpoint_path):
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    num_classes = checkpoint["num_classes"]
+    country_to_idx = checkpoint["country_to_idx"]
+    model = build_model(num_classes=num_classes, pretrained=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
+    return model, country_to_idx
 
 def test_evaluation(): 
     y_true = ["Japan", "South Korea", "Ecuador", "Urugauy"]
@@ -37,7 +55,7 @@ def test_evaluation():
 
     print("All tests passed!")
 
-def evaluate(y_true, y_pred):# function to compare correct labels and predictions 
+def evaluate(y_true, y_pred, country_to_idx=None):# function to compare correct labels and predictions 
     accuracy = accuracy_score(y_true, y_pred) #calculate the accuracy by comparing actual and predicted countries 
 
     macro_f1 = f1_score( #calculating the macro-averaged F1 score
@@ -47,6 +65,13 @@ def evaluate(y_true, y_pred):# function to compare correct labels and prediction
         zero_division=0
     )
 
+    if country_to_idx is not None:
+        labels = sorted(country_to_idx.values())
+        country_names = [country for country, index in sorted(country_to_idx.items(), key=lambda item: item[1])]
+    else:
+        labels = None
+        country_names = None
+
     print(f"Accuracy: {accuracy:.2%}") #display the accuracy as percentage
     print(f"Macro F1: {macro_f1:.4f}") #display the macro F1
 
@@ -55,6 +80,8 @@ def evaluate(y_true, y_pred):# function to compare correct labels and prediction
     report = classification_report( #generate a detailed classification report
         y_true,
         y_pred,
+        labels=labels,
+        target_names=country_names,
         zero_division=0
     )
 
@@ -81,15 +108,46 @@ def evaluate(y_true, y_pred):# function to compare correct labels and prediction
     print("Confusion matrix saved!")
 
 
-    return accuracy, macro_f1 #returnng the accuracy and macro F1
+    return accuracy, macro_f1 #returning the accuracy and macro F1
 
+def parse_args():
+    #Create an argument parser
+    parser = argparse.ArgumentParser(description="Evaluate the WorldKnower model")
+    #Path to the saved model checkpoint
+    parser.add_argument("--checkpoint", type=str, help="Path to the trained model checkpoint")
+    #Path to the CSV defining the evaluation split
+    parser.add_argument("--split-csv", type=str, help="Path to the validatioon or test split CSV")
+    #Path to the folder containing dataset images
+    parser.add_argument("--dataset-root", type=str, help="Path to the dataset root directory")
+    #Run synthetic tests only when requested
+    parser.add_argument("--self-test", action="store_true", help="Run tests with made-up predictions")
+    #Read the arguments supplied in the terminal 
+    return parser.parse_args()
+
+
+
+
+def run_real_evaluation(args): #function used to evalate a teammate' trained model
+    model, country_to_idx = load_trained_model(args.checkpoint)
+    val_loader = load_validation_data(args, country_to_idx)
+
+    print("Model loaded successfully!")
+    print("Number of countries:", len(country_to_idx))
+    print("Validation images:", len(val_loader.dataset))
+
+    return
+
+    y_true, y_pred = collect_predictions(model, val_loader)
+    accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx)
+    return accuracy, macro_f1
 
 if __name__ == "__main__": #running only when filed is executed directly
-    test_evaluation() # run to verify evaluation works
-
-def run_real_evaluation(model, val_loader): #function used to evalate a teammate' trained model
-    y_true, y_pred = collect_predictions(model, val_loader)
-
-    accuracy, macro_f1 = evaluate(y_true, y_pred)
-
-    return accuracy, macro_f1
+    #test_evaluation() # run to verify evaluation works
+    args = parse_args()
+    if args.self_test:
+        test_evaluation()
+    else:
+        if not all([args.checkpoint, args.split_csv, args.dataset_root]):
+            raise ValueError("Provide --checkpoint, --split-csv, "
+                             "and --dataset-root")
+        run_real_evaluation(args)
