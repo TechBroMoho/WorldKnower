@@ -1,1 +1,2 @@
 run_id,date,author,model,epochs,batch_size,lr,val_accuracy,val_f1,notes
+baseline-01,2026-10-19,Bal207,resnet18,10,32,0.0001,0.3285,,pretrained; aug on; amp on; seed 42; T4; 40 countries; best at epoch 10 (train loss 0.06 vs val 33% = overfitting); ckpt WorldKnowerDrive/checkpoints/baseline_r18/best_resnet18.pth
