@@ -87,6 +87,8 @@ class CountryDataset(Dataset):
         csv_path = Path(csv_path)
         root = Path(root_dir) if root_dir is not None else csv_path.parent
         frame = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+        if "image_path" in frame.columns and "path" not in frame.columns:
+          frame = frame.rename(columns={"image_path": "path"})
         if not {"path", "country"}.issubset(frame.columns):
             raise ValueError(f"{csv_path} must contain columns 'path' and 'country'")
         if frame.empty or frame[["path", "country"]].eq("").any().any():
