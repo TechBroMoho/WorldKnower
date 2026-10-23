@@ -1,69 +1,12 @@
-import os
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split
+"""CSV image datasets, ImageNet transforms, and ordinary PyTorch DataLoaders."""
 
 from pathlib import Path
+
 import pandas as pd
 from PIL import Image
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-
-"""Creating country to image_path csv and train/val/test splits"""
-
-dataset_path = "data/raw/compressed_dataset"
-
-image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
-
-country_to_image_data = {
-    "country": [],
-    "image_path": []
-}
-
-rng = np.random.default_rng(42)
-
-for country in sorted(os.listdir(dataset_path)):
-    country_path = os.path.join(dataset_path, country)
-
-    if not os.path.isdir(country_path):
-        continue
-
-    country_image_arr = np.array([
-        os.path.relpath(os.path.join(root, file), country_path)
-        for root, dirs, files in os.walk(country_path)
-        for file in files
-        if os.path.splitext(file)[1].lower() in image_extensions
-    ])
-    country_sample = rng.choice(country_image_arr, size=min(250, country_image_arr.size), replace=False)
-
-    for image_file in country_sample:
-        country_to_image_data['country'].append(country)
-        image_path = os.path.join(country_path, image_file)
-        country_to_image_data['image_path'].append(image_path)
-
-country_to_image_df = pd.DataFrame(country_to_image_data)
-country_to_image_df.to_csv('data/raw/country_to_path.csv', index=False)
-
-X = country_to_image_df[['image_path']]
-y = country_to_image_df['country']
-X_train_temp, X_test, y_train_temp, y_test = train_test_split(X, y, test_size = 0.15, random_state = 27, stratify = y)
-X_train, X_val, y_train, y_val = train_test_split(X_train_temp, y_train_temp, test_size = 0.18, random_state = 27, stratify = y_train_temp)
-
-country_to_image_train_df = X_train.copy()
-country_to_image_train_df['country'] = y_train
-country_to_image_train_df.to_csv('data/splits/world_knower_train.csv', index=False)
-
-country_to_image_val_df = X_val.copy()
-country_to_image_val_df['country'] = y_val
-country_to_image_val_df.to_csv('data/splits/world_knower_val.csv', index=False)
-
-country_to_image_test_df = X_test.copy()
-country_to_image_test_df['country'] = y_test
-country_to_image_test_df.to_csv('data/splits/world_knower_test.csv', index=False)
-
-
-"""CSV image datasets, ImageNet transforms, and ordinary PyTorch DataLoaders."""
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
@@ -87,6 +30,8 @@ class CountryDataset(Dataset):
         csv_path = Path(csv_path)
         root = Path(root_dir) if root_dir is not None else csv_path.parent
         frame = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+        if "path" not in frame.columns and "image_path" in frame.columns:
+            frame = frame.rename(columns={"image_path": "path"})  # make_splits.py output
         if not {"path", "country"}.issubset(frame.columns):
             raise ValueError(f"{csv_path} must contain columns 'path' and 'country'")
         if frame.empty or frame[["path", "country"]].eq("").any().any():
