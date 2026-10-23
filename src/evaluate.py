@@ -135,7 +135,6 @@ def run_real_evaluation(args): #function used to evalate a teammate' trained mod
     print("Number of countries:", len(country_to_idx))
     print("Validation images:", len(val_loader.dataset))
 
-    return
 
     y_true, y_pred = collect_predictions(model, val_loader)
     accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx)
