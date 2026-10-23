@@ -1,1 +1,2 @@
 run_id,date,author,model,epochs,batch_size,lr,val_accuracy,val_f1,notes
+baseline_r18,2026-10-18,Balaji,resnet18,10,32,0.0001,0.3285,,"Pretrained ResNet18 full fine-tune, Adam, AMP, aug on; 40 countries x 250 imgs (6891 train / 1513 val); T4; best at epoch 10; train loss 0.06 vs val acc ~30-33% from epoch 4 on, so heavy overfitting; ckpt WorldKnowerDrive/checkpoints/baseline_r18"
