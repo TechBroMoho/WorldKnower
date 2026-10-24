@@ -88,12 +88,19 @@ def evaluate(y_true, y_pred, country_to_idx=None):# function to compare correct 
     print("\nClassification Report:") 
     print(report) #print classification report
 
+    fig, ax = plt.subplots(figsize=(16, 16)) #big enough to fit 40 countries
     display = ConfusionMatrixDisplay.from_predictions( #generate a confusion matrix graph from the predictions
         y_true,
         y_pred,
+        labels=labels,
+        display_labels=country_names, #show country names instead of 0-39
+        normalize="true", #each row shows the share of that country's images, not raw counts
+        include_values=False, #skip the numbers in each square so the plot stays readable
         cmap="Blues",
-        xticks_rotation=45
+        xticks_rotation=90,
+        ax=ax
     )
+    ax.set_title("Confusion matrix (row-normalized)")
 
     output_dir = Path("results/figures") #specify where the graph will be saved
     output_dir.mkdir(parents=True, exist_ok=True) #creates new folder
