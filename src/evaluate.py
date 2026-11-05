@@ -5,7 +5,9 @@ import argparse
 import matplotlib.pyplot as plt # create graphs
 import torch #used to run the trained AI model
 from torchvision.models import ResNet18_Weights, resnet18
+import numpy as np
 import pandas as pd
+from geo_utils import distance_matrix, geoguessr_score
 
 from sklearn.metrics import (accuracy_score,  # percentage of correct guesses
                              f1_score,        # Measures prediction quality using precision and recall
@@ -134,6 +136,17 @@ def parse_args():
 
 
 
+def distance_metrics(y_true, y_pred, country_to_idx): # GeoGuessr-style distance metrics from predicted vs. true labels
+    countries = [c for c, _ in sorted(country_to_idx.items(), key=lambda item: item[1])] # country names in label-index order
+    dist = distance_matrix(countries) # km between every pair of countries
+    km = dist[np.asarray(y_true), np.asarray(y_pred)] # distance error of each guess (0 when correct)
+    mean_km = float(km.mean()) # average distance error in km
+    mean_score = float(geoguessr_score(km).mean()) # average of 5000 * exp(-d / 1492.7)
+    print(f"Mean distance error: {mean_km:.1f} km")
+    print(f"Median distance error: {float(np.median(km)):.1f} km")
+    print(f"GeoGuessr score: {mean_score:.1f} / 5000")
+    return mean_km, mean_score
+
 def run_real_evaluation(args): #function used to evalate a teammate' trained model
     model, country_to_idx = load_trained_model(args.checkpoint)
     val_loader = load_validation_data(args, country_to_idx)
@@ -145,7 +158,8 @@ def run_real_evaluation(args): #function used to evalate a teammate' trained mod
 
     y_true, y_pred = collect_predictions(model, val_loader)
     accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx)
-    return accuracy, macro_f1
+    mean_km, geo_score = distance_metrics(y_true, y_pred, country_to_idx)
+    return accuracy, macro_f1, mean_km, geo_score
 
 if __name__ == "__main__": #running only when filed is executed directly
     #test_evaluation() # run to verify evaluation works
