@@ -7,11 +7,17 @@ from torchvision.models import ResNet18_Weights, resnet18
 ARCHITECTURE = "resnet18"
 
 
-def build_model(num_classes, pretrained=True):
+def build_model(num_classes, pretrained=True, freeze_backbone=False):
     """Full fine-tuning by default; disable weights for offline tests/reloading."""
     if num_classes < 1:
         raise ValueError("num_classes must be a positive integer")
     model = resnet18(weights=ResNet18_Weights.DEFAULT if pretrained else None)
+    #skips over the tensor during backpropogation so it won't compute the gradient
+    #weight stays at pretrained value which speeds up training steps
+    #ensures that only the final layer gets trained
+    if freeze_backbone:
+        for param in model.parameters():
+            param.requires_grad = False
     model.fc = nn.Linear(model.fc.in_features, num_classes)
     return model
 

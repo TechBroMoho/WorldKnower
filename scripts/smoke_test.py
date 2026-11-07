@@ -59,6 +59,26 @@ def run():
         torch.nn.functional.cross_entropy(logits, labels).backward()
         assert model.conv1.weight.grad is not None and torch.isfinite(model.conv1.weight.grad).all()
         del model
+
+        torch.manual_seed(42)  # main() seeds 42 before building, so the init matches.
+        frozen = build_model(3, pretrained=False, freeze_backbone=True)
+        trainable = [name for name, param in frozen.named_parameters() if param.requires_grad]
+        assert trainable == ["fc.weight", "fc.bias"]
+        frozen_conv1 = frozen.conv1.weight.detach().clone()
+        frozen_bn_mean = frozen.bn1.running_mean.clone()
+        del frozen
+        frozen_result = main([
+            "--train-csv", str(root / "train.csv"), "--val-csv", str(root / "val.csv"),
+            "--dataset-root", str(root), "--epochs", "1", "--batch-size", "3",
+            "--device", "cpu", "--no-pretrained", "--no-augmentation", "--freeze-backbone",
+            "--checkpoint-dir", str(root / "frozen_checkpoints"), "--history-path", str(root / "frozen_history.csv"),
+        ])
+        frozen_loaded, frozen_checkpoint = load_checkpoint(frozen_result["checkpoint_path"], device="cpu")
+        assert frozen_checkpoint["freeze_backbone"] is True
+        # Same seed gives the same random init, so an untouched backbone must match the pre-training copy.
+        assert torch.equal(frozen_conv1, frozen_loaded.conv1.weight)
+        assert torch.equal(frozen_bn_mean, frozen_loaded.bn1.running_mean)  # BatchNorm stats stayed fixed too.
+
         result = main([
             "--train-csv", str(root / "train.csv"), "--val-csv", str(root / "val.csv"),
             "--dataset-root", str(root), "--epochs", "1", "--batch-size", "3",

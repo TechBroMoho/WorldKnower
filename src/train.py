@@ -33,6 +33,7 @@ def build_parser():
     parser.add_argument("--pretrained", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--augmentation", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--freeze-backbone", action=argparse.BooleanOptionalAction, default=False)
     return parser
 
 
@@ -60,8 +61,8 @@ def main(argv=None):
     countries = train_loader.dataset.countries
     mapping = train_loader.dataset.country_to_idx
     print(f"Number of countries: {len(countries)}", flush=True)
-    model = build_model(len(countries), args.pretrained).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    model = build_model(len(countries), args.pretrained, args.freeze_backbone).to(device)
+    optimizer = torch.optim.Adam([param for param in model.parameters() if param.requires_grad], lr=args.lr)
     criterion = nn.CrossEntropyLoss()
     amp = args.amp and device == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
@@ -76,6 +77,10 @@ def main(argv=None):
         writer.writerow(["epoch", "train_loss", "val_accuracy"])
         for epoch in range(1, args.epochs + 1):
             model.train()
+            if args.freeze_backbone:
+                for name, module in model.named_children():
+                    if name != "fc":
+                        module.eval()
             total_loss = 0.0
             for images, labels in train_loader:
                 images = images.to(device, non_blocking=device == "cuda")
@@ -104,7 +109,7 @@ def main(argv=None):
                 best_accuracy = accuracy
                 torch.save(dict(architecture=ARCHITECTURE, model_state_dict=model.state_dict(),
                                 countries=countries, country_to_idx=mapping, num_classes=len(countries),
-                                epoch=epoch, best_val_accuracy=best_accuracy), checkpoint_path)
+                                epoch=epoch, best_val_accuracy=best_accuracy, freeze_backbone=args.freeze_backbone), checkpoint_path)
                 print(f"Saved best checkpoint: {checkpoint_path}", flush=True)
     return dict(checkpoint_path=str(checkpoint_path), history_path=str(history_path),
                 best_val_accuracy=best_accuracy)
