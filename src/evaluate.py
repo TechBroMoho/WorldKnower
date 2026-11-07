@@ -5,7 +5,9 @@ import argparse
 import matplotlib.pyplot as plt # create graphs
 import torch #used to run the trained AI model
 from torchvision.models import ResNet18_Weights, resnet18
+import numpy as np
 import pandas as pd
+from geo_utils import distance_matrix, geoguessr_score
 
 from sklearn.metrics import (accuracy_score,  # percentage of correct guesses
                              f1_score,        # Measures prediction quality using precision and recall
@@ -55,7 +57,7 @@ def test_evaluation():
 
     print("All tests passed!")
 
-def evaluate(y_true, y_pred, country_to_idx=None):# function to compare correct labels and predictions 
+def evaluate(y_true, y_pred, country_to_idx=None, figure_name="confusion_matrix.png"):# function to compare correct labels and predictions 
     accuracy = accuracy_score(y_true, y_pred) #calculate the accuracy by comparing actual and predicted countries 
 
     macro_f1 = f1_score( #calculating the macro-averaged F1 score
@@ -107,7 +109,7 @@ def evaluate(y_true, y_pred, country_to_idx=None):# function to compare correct 
 
     plt.tight_layout()
     plt.savefig( #saving the confusion matrix as a PNG image
-        output_dir / "confusion_matrix.png", # output file location
+        output_dir / figure_name, # output file location (unique per experiment)
         bbox_inches="tight"
     )
     plt.close()
@@ -126,6 +128,8 @@ def parse_args():
     parser.add_argument("--split-csv", type=str, help="Path to the validatioon or test split CSV")
     #Path to the folder containing dataset images
     parser.add_argument("--dataset-root", type=str, help="Path to the dataset root directory")
+    #File name for the confusion matrix, so experiments do not overwrite each other
+    parser.add_argument("--figure-name", type=str, default="confusion_matrix.png", help="Confusion matrix file name, e.g. confusion_matrix_dist_w1.0.png")
     #Run synthetic tests only when requested
     parser.add_argument("--self-test", action="store_true", help="Run tests with made-up predictions")
     #Read the arguments supplied in the terminal 
@@ -133,6 +137,17 @@ def parse_args():
 
 
 
+
+def distance_metrics(y_true, y_pred, country_to_idx): # GeoGuessr-style distance metrics from predicted vs. true labels
+    countries = [c for c, _ in sorted(country_to_idx.items(), key=lambda item: item[1])] # country names in label-index order
+    dist = distance_matrix(countries) # km between every pair of countries
+    km = dist[np.asarray(y_true), np.asarray(y_pred)] # distance error of each guess (0 when correct)
+    mean_km = float(km.mean()) # average distance error in km
+    mean_score = float(geoguessr_score(km).mean()) # average of 5000 * exp(-d / 1492.7)
+    print(f"Mean distance error: {mean_km:.1f} km")
+    print(f"Median distance error: {float(np.median(km)):.1f} km")
+    print(f"GeoGuessr score: {mean_score:.1f} / 5000")
+    return mean_km, mean_score
 
 def run_real_evaluation(args): #function used to evalate a teammate' trained model
     model, country_to_idx = load_trained_model(args.checkpoint)
@@ -144,8 +159,9 @@ def run_real_evaluation(args): #function used to evalate a teammate' trained mod
 
 
     y_true, y_pred = collect_predictions(model, val_loader)
-    accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx)
-    return accuracy, macro_f1
+    accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx, args.figure_name)
+    mean_km, geo_score = distance_metrics(y_true, y_pred, country_to_idx)
+    return accuracy, macro_f1, mean_km, geo_score
 
 if __name__ == "__main__": #running only when filed is executed directly
     #test_evaluation() # run to verify evaluation works

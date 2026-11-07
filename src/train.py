@@ -11,9 +11,11 @@ from torch import nn
 
 if __package__:
     from .dataset import create_dataloaders
+    from .geo_utils import distance_matrix, geoguessr_score
     from .model import ARCHITECTURE, build_model
 else:
     from dataset import create_dataloaders
+    from geo_utils import distance_matrix, geoguessr_score
     from model import ARCHITECTURE, build_model
 
 
@@ -24,6 +26,10 @@ def build_parser():
     parser.add_argument("--dataset-root", default=".")
     parser.add_argument("--checkpoint-dir", default="results/checkpoints")
     parser.add_argument("--history-path", default="results/training_history.csv")
+    parser.add_argument("--loss", choices=["ce", "distance"], default="ce",
+                        help="ce: cross-entropy; distance: cross-entropy + expected-km penalty")
+    parser.add_argument("--distance-weight", type=float, default=1.0,
+                        help="weight on expected_km / 1000 when --loss distance")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", "--learning-rate", type=float, default=0.0001)
@@ -41,6 +47,8 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.epochs < 1 or args.lr <= 0:
         raise ValueError("epochs and learning rate must be positive")
+    if args.distance_weight < 0:
+        raise ValueError("distance weight must be non-negative")
     device = args.device
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -64,6 +72,14 @@ def main(argv=None):
     model = build_model(len(countries), args.pretrained, args.freeze_backbone).to(device)
     optimizer = torch.optim.Adam([param for param in model.parameters() if param.requires_grad], lr=args.lr)
     criterion = nn.CrossEntropyLoss()
+    use_distance = args.loss == "distance"
+    try:
+        dist_matrix = torch.from_numpy(distance_matrix(countries)).to(device)  # (N, N) km, label order
+    except KeyError:  # synthetic labels (smoke test) have no coordinates
+        if use_distance:
+            raise
+        dist_matrix = None
+    print(f"Loss: {args.loss}" + (f" (weight {args.distance_weight})" if use_distance else ""), flush=True)
     amp = args.amp and device == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
     checkpoint_path = Path(args.checkpoint_dir) / "best_resnet18.pth"
@@ -74,7 +90,7 @@ def main(argv=None):
 
     with history_path.open("w", newline="", encoding="utf-8") as history_file:
         writer = csv.writer(history_file)
-        writer.writerow(["epoch", "train_loss", "val_accuracy"])
+        writer.writerow(["epoch", "train_loss", "val_accuracy", "val_mean_km", "val_geoguessr_score"])
         for epoch in range(1, args.epochs + 1):
             model.train()
             if args.freeze_backbone:
@@ -87,7 +103,12 @@ def main(argv=None):
                 labels = labels.to(device, non_blocking=device == "cuda")
                 optimizer.zero_grad(set_to_none=True)
                 with torch.amp.autocast(device_type=device, enabled=amp):
-                    loss = criterion(model(images), labels)
+                    logits = model(images)
+                    loss = criterion(logits, labels)
+                    if use_distance:
+                        probs = logits.float().softmax(dim=1)
+                        expected_km = (probs * dist_matrix[labels]).sum(dim=1).mean()
+                        loss = loss + args.distance_weight * expected_km / 1000
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
                 scaler.update()
@@ -96,14 +117,23 @@ def main(argv=None):
 
             model.eval()
             correct = 0
+            km_sum = score_sum = 0.0
             with torch.inference_mode():
                 for images, labels in val_loader:
                     images = images.to(device, non_blocking=device == "cuda")
                     labels = labels.to(device, non_blocking=device == "cuda")
-                    correct += (model(images).argmax(dim=1) == labels).sum().item()
+                    predictions = model(images).argmax(dim=1)
+                    correct += (predictions == labels).sum().item()
+                    if dist_matrix is not None:
+                        km = dist_matrix[labels, predictions]
+                        km_sum += km.sum().item()
+                        score_sum += geoguessr_score(km.cpu().numpy()).sum()
             accuracy = correct / len(val_loader.dataset)
-            print(f"Epoch {epoch}/{args.epochs} | Training loss: {train_loss:.4f} | Validation accuracy: {accuracy:.2%}", flush=True)
-            writer.writerow([epoch, train_loss, accuracy])
+            val_km = km_sum / len(val_loader.dataset) if dist_matrix is not None else float("nan")
+            val_score = float(score_sum) / len(val_loader.dataset) if dist_matrix is not None else float("nan")
+            print(f"Epoch {epoch}/{args.epochs} | Training loss: {train_loss:.4f} | Validation accuracy: {accuracy:.2%}"
+                  f" | Mean distance: {val_km:.0f} km | GeoGuessr score: {val_score:.0f}", flush=True)
+            writer.writerow([epoch, train_loss, accuracy, val_km, val_score])
             history_file.flush()
             if accuracy > best_accuracy:
                 best_accuracy = accuracy

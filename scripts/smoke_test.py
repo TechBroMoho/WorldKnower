@@ -93,7 +93,7 @@ def run():
         with torch.inference_mode():
             assert loaded(images).shape == (3, 3)
         history = pd.read_csv(result["history_path"])
-        assert list(history.columns) == ["epoch", "train_loss", "val_accuracy"] and len(history) == 1
+        assert list(history.columns) == ["epoch", "train_loss", "val_accuracy", "val_mean_km", "val_geoguessr_score"] and len(history) == 1
         assert np.isfinite(history.train_loss.iloc[0])
         assert history.val_accuracy.iloc[0] == result["best_val_accuracy"]
         print("PASS: RGB loading, transforms, mappings, batches, Windows worker, forward/backward, CPU epoch, validation, checkpoint reload.")
