@@ -57,7 +57,7 @@ def test_evaluation():
 
     print("All tests passed!")
 
-def evaluate(y_true, y_pred, country_to_idx=None):# function to compare correct labels and predictions 
+def evaluate(y_true, y_pred, country_to_idx=None, figure_name="confusion_matrix.png"):# function to compare correct labels and predictions 
     accuracy = accuracy_score(y_true, y_pred) #calculate the accuracy by comparing actual and predicted countries 
 
     macro_f1 = f1_score( #calculating the macro-averaged F1 score
@@ -109,7 +109,7 @@ def evaluate(y_true, y_pred, country_to_idx=None):# function to compare correct 
 
     plt.tight_layout()
     plt.savefig( #saving the confusion matrix as a PNG image
-        output_dir / "confusion_matrix.png", # output file location
+        output_dir / figure_name, # output file location (unique per experiment)
         bbox_inches="tight"
     )
     plt.close()
@@ -128,6 +128,8 @@ def parse_args():
     parser.add_argument("--split-csv", type=str, help="Path to the validatioon or test split CSV")
     #Path to the folder containing dataset images
     parser.add_argument("--dataset-root", type=str, help="Path to the dataset root directory")
+    #File name for the confusion matrix, so experiments do not overwrite each other
+    parser.add_argument("--figure-name", type=str, default="confusion_matrix.png", help="Confusion matrix file name, e.g. confusion_matrix_dist_w1.0.png")
     #Run synthetic tests only when requested
     parser.add_argument("--self-test", action="store_true", help="Run tests with made-up predictions")
     #Read the arguments supplied in the terminal 
@@ -157,7 +159,7 @@ def run_real_evaluation(args): #function used to evalate a teammate' trained mod
 
 
     y_true, y_pred = collect_predictions(model, val_loader)
-    accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx)
+    accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx, args.figure_name)
     mean_km, geo_score = distance_metrics(y_true, y_pred, country_to_idx)
     return accuracy, macro_f1, mean_km, geo_score
 
