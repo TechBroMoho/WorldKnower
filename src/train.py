@@ -12,11 +12,11 @@ from torch import nn
 if __package__:
     from .dataset import create_dataloaders
     from .geo_utils import distance_matrix, geoguessr_score
-    from .model import ARCHITECTURE, build_model
+    from .model import ARCHITECTURE, ARCHITECTURES, HEAD_NAMES, build_model
 else:
     from dataset import create_dataloaders
     from geo_utils import distance_matrix, geoguessr_score
-    from model import ARCHITECTURE, build_model
+    from model import ARCHITECTURE, ARCHITECTURES, HEAD_NAMES, build_model
 
 
 def build_parser():
@@ -40,6 +40,7 @@ def build_parser():
     parser.add_argument("--augmentation", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--freeze-backbone", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--architecture", choices=sorted(ARCHITECTURES), default=ARCHITECTURE)
     return parser
 
 
@@ -69,7 +70,7 @@ def main(argv=None):
     countries = train_loader.dataset.countries
     mapping = train_loader.dataset.country_to_idx
     print(f"Number of countries: {len(countries)}", flush=True)
-    model = build_model(len(countries), args.pretrained, args.freeze_backbone).to(device)
+    model = build_model(len(countries), args.pretrained, args.freeze_backbone, args.architecture).to(device)
     optimizer = torch.optim.Adam([param for param in model.parameters() if param.requires_grad], lr=args.lr)
     criterion = nn.CrossEntropyLoss()
     use_distance = args.loss == "distance"
@@ -82,7 +83,7 @@ def main(argv=None):
     print(f"Loss: {args.loss}" + (f" (weight {args.distance_weight})" if use_distance else ""), flush=True)
     amp = args.amp and device == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
-    checkpoint_path = Path(args.checkpoint_dir) / "best_resnet18.pth"
+    checkpoint_path = Path(args.checkpoint_dir) / f"best_{args.architecture}.pth"
     history_path = Path(args.history_path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,7 +96,7 @@ def main(argv=None):
             model.train()
             if args.freeze_backbone:
                 for name, module in model.named_children():
-                    if name != "fc":
+                    if name != HEAD_NAMES[args.architecture]:
                         module.eval()
             total_loss = 0.0
             for images, labels in train_loader:
@@ -137,7 +138,7 @@ def main(argv=None):
             history_file.flush()
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
-                torch.save(dict(architecture=ARCHITECTURE, model_state_dict=model.state_dict(),
+                torch.save(dict(architecture=args.architecture, model_state_dict=model.state_dict(),
                                 countries=countries, country_to_idx=mapping, num_classes=len(countries),
                                 epoch=epoch, best_val_accuracy=best_accuracy, freeze_backbone=args.freeze_backbone), checkpoint_path)
                 print(f"Saved best checkpoint: {checkpoint_path}", flush=True)

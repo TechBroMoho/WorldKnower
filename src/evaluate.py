@@ -1,5 +1,5 @@
 from pathlib import Path # credit folders and specify file locations
-from model import build_model
+from model import ARCHITECTURE, build_model
 from dataset import CountryDataset, create_loader, build_transforms 
 import argparse 
 import matplotlib.pyplot as plt # create graphs
@@ -41,7 +41,7 @@ def load_trained_model(checkpoint_path):
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     num_classes = checkpoint["num_classes"]
     country_to_idx = checkpoint["country_to_idx"]
-    model = build_model(num_classes=num_classes, pretrained=False)
+    model = build_model(num_classes=num_classes, pretrained=False, architecture=checkpoint.get("architecture", ARCHITECTURE))
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     return model, country_to_idx
