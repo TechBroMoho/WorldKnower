@@ -6,7 +6,7 @@ Inspired by [GeoKnowr](https://github.com/callaunchpad/GeoKnowr).
 ## Baseline files
 
 - `src/dataset.py`: CSV Dataset, RGB conversion, transforms and DataLoaders.
-- `src/model.py`: ResNet18 factory and checkpoint-loading helper.
+- `src/model.py`: ResNet18, ResNet50 and EfficientNet-B0 factory and checkpoint-loading helper.
 - `src/train.py`: Adam/CrossEntropy training, validation, best checkpoint and history CSV.
 - `scripts/smoke_test.py`: small CPU test using temporary synthetic images.
 - `src/evaluate.py` and `src/geo_utils.py`: teammates' files, left unchanged.
@@ -66,7 +66,7 @@ Labels are sorted once from training and reused for validation/test. Unknown cou
 
 Use a different `EXPERIMENT_FOLDER` for each experiment you want to keep. The same paths are overwritten on a later run. Mounted Drive results persist; `/content/data` and the cloned repository are temporary. Normal VS Code terminals run locally; hosted notebook cells and an explicitly remote Colab terminal run on Google's servers. GPU availability is not guaranteed. `--device cuda` fails if PyTorch cannot access CUDA.
 
-Defaults are pretrained ResNet18, full fine-tuning, 10 epochs, batch size 32, learning rate 0.0001, Adam, CrossEntropyLoss and seed 42. Augmentation uses moderate crops, small rotations and brightness changes without horizontal flips; validation/test only resize to 224×224 and apply ImageNet normalization. CUDA mixed precision is enabled by default; `--no-amp` disables it. Other overrides include `--epochs`, `--batch-size`, `--lr`, `--num-workers`, `--seed`, `--no-augmentation`, `--no-pretrained` and `--freeze-backbone` (trains only the final layer). Device options are `auto`, `cpu` and `cuda`.
+Defaults are pretrained ResNet18, full fine-tuning, 10 epochs, batch size 32, learning rate 0.0001, Adam, CrossEntropyLoss and seed 42. Augmentation uses moderate crops, small rotations and brightness changes without horizontal flips; validation/test only resize to 224×224 and apply ImageNet normalization. CUDA mixed precision is enabled by default; `--no-amp` disables it. Other overrides include `--epochs`, `--batch-size`, `--lr`, `--num-workers`, `--seed`, `--no-augmentation`, `--no-pretrained` and `--freeze-backbone` (trains only the final layer) and `--architecture` (`resnet18`, `resnet50` or `efficientnet_b0`, saved to `best_<architecture>.pth`). Device options are `auto`, `cpu` and `cuda`.
 
 Keep Colab's existing CUDA-compatible torch/torchvision installation (PyTorch >= 2.4); install only missing supporting packages. Do not run the local CPU-wheel installation cell on Colab. The online notebook, Drive access and hosted training were not tested during this refactor.
 

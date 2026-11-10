@@ -79,6 +79,24 @@ def run():
         assert torch.equal(frozen_conv1, frozen_loaded.conv1.weight)
         assert torch.equal(frozen_bn_mean, frozen_loaded.bn1.running_mean)  # BatchNorm stats stayed fixed too.
 
+        for architecture in ("resnet50", "efficientnet_b0"):
+            torch.manual_seed(42)
+            arch_frozen = build_model(3, pretrained=False, freeze_backbone=True, architecture=architecture)
+            head = "fc" if architecture == "resnet50" else "classifier.1"
+            assert [name for name, param in arch_frozen.named_parameters() if param.requires_grad] == [f"{head}.weight", f"{head}.bias"]
+            del arch_frozen
+            arch_result = main([
+                "--train-csv", str(root / "train.csv"), "--val-csv", str(root / "val.csv"),
+                "--dataset-root", str(root), "--epochs", "1", "--batch-size", "3",
+                "--device", "cpu", "--no-pretrained", "--no-augmentation", "--architecture", architecture,
+                "--checkpoint-dir", str(root / f"{architecture}_checkpoints"), "--history-path", str(root / f"{architecture}_history.csv"),
+            ])
+            assert Path(arch_result["checkpoint_path"]).name == f"best_{architecture}.pth"
+            arch_loaded, arch_checkpoint = load_checkpoint(arch_result["checkpoint_path"], device="cpu")
+            assert arch_checkpoint["architecture"] == architecture and arch_checkpoint["num_classes"] == 3
+            with torch.inference_mode():
+                assert arch_loaded(images).shape == (3, 3)
+
         result = main([
             "--train-csv", str(root / "train.csv"), "--val-csv", str(root / "val.csv"),
             "--dataset-root", str(root), "--epochs", "1", "--batch-size", "3",
