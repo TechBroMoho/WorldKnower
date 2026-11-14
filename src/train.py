@@ -73,7 +73,7 @@ def main(argv=None):
 
     with history_path.open("w", newline="", encoding="utf-8") as history_file:
         writer = csv.writer(history_file)
-        writer.writerow(["epoch", "train_loss", "val_accuracy"])
+        writer.writerow(["epoch", "train_loss", "val_loss", "val_accuracy",])
         for epoch in range(1, args.epochs + 1):
             model.train()
             total_loss = 0.0
@@ -90,15 +90,22 @@ def main(argv=None):
             train_loss = total_loss / len(train_loader.dataset)
 
             model.eval()
-            correct = 0
+            correct = 0 
+            total_val_loss = 0.0
             with torch.inference_mode():
                 for images, labels in val_loader:
                     images = images.to(device, non_blocking=device == "cuda")
                     labels = labels.to(device, non_blocking=device == "cuda")
-                    correct += (model(images).argmax(dim=1) == labels).sum().item()
+
+                    with torch.amp.autocast(device_type=device, enabled=amp):
+                        outputs = model(images) 
+                        loss = criterion(outputs, labels)
+                    total_val_loss += loss.item() * labels.size(0)
+                    correct += (outputs.argmax(dim=1) == labels).sum().item()
+            val_loss = total_val_loss / len(val_loader.dataset) 
             accuracy = correct / len(val_loader.dataset)
-            print(f"Epoch {epoch}/{args.epochs} | Training loss: {train_loss:.4f} | Validation accuracy: {accuracy:.2%}", flush=True)
-            writer.writerow([epoch, train_loss, accuracy])
+            print(f"Epoch {epoch}/{args.epochs} | Training loss: {train_loss:.4f} | Validation loss: {val_loss:.4f} | Validation accuracy: {accuracy:.2%}", flush=True)
+            writer.writerow([epoch, train_loss, val_loss, accuracy])
             history_file.flush()
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
