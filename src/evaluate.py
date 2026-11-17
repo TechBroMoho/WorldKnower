@@ -19,6 +19,7 @@ from sklearn.metrics import (accuracy_score,  # percentage of correct guesses
 def collect_predictions(model, val_loader): # function that takes a trained model and validation data loader
     y_true = [] # creates an empty list to store correct country labels
     y_pred = [] # creates an empty list to store the model's predicted country labels
+    top5_correct = 0
 
 
     model.eval() # switching the model to evaluation mode
@@ -27,10 +28,21 @@ def collect_predictions(model, val_loader): # function that takes a trained mode
         for images, labels in val_loader: # go through validation images one batch at a time
             outputs = model(images) # feed the images into the model to obtain country scores
             predictions = outputs.argmax(dim=1) #selecting the country with the highest score for each image
+            
+            top5 = outputs.topk(
+                k=min(5, outputs.shape[1]),
+                dim=1
+            ).indices
+            
+            top5_correct += (
+                top5 == labels.unsqueeze(1)
+            ).any(dim=1).sum().item()
 
             y_true.extend(labels.cpu().tolist()) #convert the correct labels to a python list
             y_pred.extend(predictions.cpu().tolist()) #convert the predictions to a python list
-    return y_true, y_pred
+
+    top5_accuracy = top5_correct / len(y_true)
+    return y_true, y_pred, top5_accuracy
 
 def load_validation_data(args, country_to_idx):
     val_dataset = CountryDataset(csv_path = args.split_csv, root_dir=args.dataset_root, country_to_idx=country_to_idx, transform=build_transforms())
@@ -76,6 +88,9 @@ def evaluate(y_true, y_pred, country_to_idx=None, figure_name="confusion_matrix.
 
     print(f"Accuracy: {accuracy:.2%}") #display the accuracy as percentage
     print(f"Macro F1: {macro_f1:.4f}") #display the macro F1
+
+    if top5_accuracy is not None:
+        print(f"Top-5 Accuracy: {top5_accuracy:.2%}")
 
     cm = confusion_matrix(y_true, y_pred) #calculate the confusion matrix
 
@@ -158,8 +173,17 @@ def run_real_evaluation(args): #function used to evalate a teammate' trained mod
     print("Validation images:", len(val_loader.dataset))
 
 
-    y_true, y_pred = collect_predictions(model, val_loader)
-    accuracy, macro_f1 = evaluate(y_true, y_pred, country_to_idx, args.figure_name)
+    y_true, y_pred, top5_accuracy = collect_predictions(
+        model, val_loader
+    )
+    
+    accuracy, macro_f1 = evaluate(
+        y_true,
+        y_pred,
+        country_to_idx,
+        args.figure_name,
+        top5_accuracy=top5_accuracy
+    )
     mean_km, geo_score = distance_metrics(y_true, y_pred, country_to_idx)
     return accuracy, macro_f1, mean_km, geo_score
 
