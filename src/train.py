@@ -41,6 +41,8 @@ def build_parser():
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--freeze-backbone", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--architecture", choices=sorted(ARCHITECTURES), default=ARCHITECTURE)
+    parser.add_argument("--select-by", choices=["accuracy", "score"], default="accuracy",
+                        help="validation metric that picks the saved checkpoint (score: mean GeoGuessr score)")
     return parser
 
 
@@ -50,6 +52,8 @@ def main(argv=None):
         raise ValueError("epochs and learning rate must be positive")
     if args.distance_weight < 0:
         raise ValueError("distance weight must be non-negative")
+    if args.select_by == "score" and args.loss == "ce":
+        print("Note: selecting by GeoGuessr score while training with plain cross-entropy.", flush=True)
     device = args.device
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -80,6 +84,17 @@ def main(argv=None):
         if use_distance:
             raise
         dist_matrix = None
+    if args.select_by == "score" and dist_matrix is None:
+        raise ValueError("--select-by score needs country coordinates for every label")
+
+    def compute_loss(logits, labels):
+        loss = criterion(logits, labels)
+        if use_distance:
+            probs = logits.float().softmax(dim=1)
+            expected_km = (probs * dist_matrix[labels]).sum(dim=1).mean()
+            loss = loss + args.distance_weight * expected_km / 1000
+        return loss
+
     print(f"Loss: {args.loss}" + (f" (weight {args.distance_weight})" if use_distance else ""), flush=True)
     amp = args.amp and device == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
@@ -87,11 +102,11 @@ def main(argv=None):
     history_path = Path(args.history_path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     history_path.parent.mkdir(parents=True, exist_ok=True)
-    best_accuracy = -1.0
+    best_accuracy = best_score = best_metric = -1.0
 
     with history_path.open("w", newline="", encoding="utf-8") as history_file:
         writer = csv.writer(history_file)
-        writer.writerow(["epoch", "train_loss", "val_accuracy", "val_mean_km", "val_geoguessr_score"])
+        writer.writerow(["epoch", "train_loss", "val_loss", "val_accuracy", "val_mean_km", "val_geoguessr_score"])
         for epoch in range(1, args.epochs + 1):
             model.train()
             if args.freeze_backbone:
@@ -104,12 +119,7 @@ def main(argv=None):
                 labels = labels.to(device, non_blocking=device == "cuda")
                 optimizer.zero_grad(set_to_none=True)
                 with torch.amp.autocast(device_type=device, enabled=amp):
-                    logits = model(images)
-                    loss = criterion(logits, labels)
-                    if use_distance:
-                        probs = logits.float().softmax(dim=1)
-                        expected_km = (probs * dist_matrix[labels]).sum(dim=1).mean()
-                        loss = loss + args.distance_weight * expected_km / 1000
+                    loss = compute_loss(model(images), labels)
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
                 scaler.update()
@@ -118,32 +128,39 @@ def main(argv=None):
 
             model.eval()
             correct = 0
-            km_sum = score_sum = 0.0
+            val_loss_sum = km_sum = score_sum = 0.0
             with torch.inference_mode():
                 for images, labels in val_loader:
                     images = images.to(device, non_blocking=device == "cuda")
                     labels = labels.to(device, non_blocking=device == "cuda")
-                    predictions = model(images).argmax(dim=1)
+                    logits = model(images)
+                    val_loss_sum += compute_loss(logits, labels).item() * labels.size(0)
+                    predictions = logits.argmax(dim=1)
                     correct += (predictions == labels).sum().item()
                     if dist_matrix is not None:
                         km = dist_matrix[labels, predictions]
                         km_sum += km.sum().item()
                         score_sum += geoguessr_score(km.cpu().numpy()).sum()
             accuracy = correct / len(val_loader.dataset)
+            val_loss = val_loss_sum / len(val_loader.dataset)
             val_km = km_sum / len(val_loader.dataset) if dist_matrix is not None else float("nan")
             val_score = float(score_sum) / len(val_loader.dataset) if dist_matrix is not None else float("nan")
-            print(f"Epoch {epoch}/{args.epochs} | Training loss: {train_loss:.4f} | Validation accuracy: {accuracy:.2%}"
+            print(f"Epoch {epoch}/{args.epochs} | Training loss: {train_loss:.4f} | Validation loss: {val_loss:.4f}"
+                  f" | Validation accuracy: {accuracy:.2%}"
                   f" | Mean distance: {val_km:.0f} km | GeoGuessr score: {val_score:.0f}", flush=True)
-            writer.writerow([epoch, train_loss, accuracy, val_km, val_score])
+            writer.writerow([epoch, train_loss, val_loss, accuracy, val_km, val_score])
             history_file.flush()
-            if accuracy > best_accuracy:
-                best_accuracy = accuracy
+            metric = val_score if args.select_by == "score" else accuracy
+            if metric > best_metric:
+                best_metric, best_accuracy, best_score = metric, accuracy, val_score
                 torch.save(dict(architecture=args.architecture, model_state_dict=model.state_dict(),
                                 countries=countries, country_to_idx=mapping, num_classes=len(countries),
-                                epoch=epoch, best_val_accuracy=best_accuracy, freeze_backbone=args.freeze_backbone), checkpoint_path)
-                print(f"Saved best checkpoint: {checkpoint_path}", flush=True)
+                                epoch=epoch, best_val_accuracy=best_accuracy, best_val_geoguessr_score=best_score,
+                                selected_by=args.select_by, loss=args.loss,
+                                freeze_backbone=args.freeze_backbone), checkpoint_path)
+                print(f"Saved best checkpoint (by {args.select_by}): {checkpoint_path}", flush=True)
     return dict(checkpoint_path=str(checkpoint_path), history_path=str(history_path),
-                best_val_accuracy=best_accuracy)
+                best_val_accuracy=best_accuracy, best_val_geoguessr_score=best_score)
 
 
 if __name__ == "__main__":

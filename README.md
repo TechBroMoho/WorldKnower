@@ -72,7 +72,7 @@ Keep Colab's existing CUDA-compatible torch/torchvision installation (PyTorch >=
 
 ## Checkpoints and evaluation
 
-The default outputs are `results/checkpoints/best_resnet18.pth` and `results/training_history.csv`. Best validation accuracy selects the checkpoint; accuracy is stored as a fraction from 0 to 1. History columns remain `epoch,train_loss,val_accuracy`. The existing `results/experiment_log.csv` is preserved but no longer written by training.
+The default outputs are `results/checkpoints/best_resnet18.pth` and `results/training_history.csv`. Best validation accuracy selects the checkpoint by default; `--select-by score` uses the mean validation GeoGuessr score instead. Accuracy is stored as a fraction from 0 to 1. History columns are `epoch,train_loss,val_loss,val_accuracy,val_mean_km,val_geoguessr_score`. The existing `results/experiment_log.csv` is preserved but no longer written by training.
 
 James can reload without downloading ImageNet weights:
 
