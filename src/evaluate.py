@@ -69,7 +69,7 @@ def test_evaluation():
 
     print("All tests passed!")
 
-def evaluate(y_true, y_pred, country_to_idx=None, figure_name="confusion_matrix.png"):# function to compare correct labels and predictions 
+def evaluate(y_true, y_pred, country_to_idx=None, figure_name="confusion_matrix.png", top5_accuracy=None):# function to compare correct labels and predictions 
     accuracy = accuracy_score(y_true, y_pred) #calculate the accuracy by comparing actual and predicted countries 
 
     macro_f1 = f1_score( #calculating the macro-averaged F1 score
